@@ -1,6 +1,6 @@
 {
   "name": "@jplannnou/eslint-config",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Shared ESLint flat configs for the GUNDO fleet (NestJS / Vite-React / Next / lib).",
   "type": "module",
   "exports": {

@@ -21,12 +21,9 @@ on:
         type: boolean
         default: true
       globs:
-        description: 'Extensiones a lintear'
+        description: 'Extensiones a lintear (regex para grep -E)'
         type: string
         default: '\.(ts|tsx|js|jsx)$'
-      pnpm-version:
-        type: string
-        default: '10.30.1'
       node-version:
         type: string
         default: '22'
@@ -42,9 +39,9 @@ jobs:
         with:
           fetch-depth: 0
 
+      # pnpm sin versión hardcodeada: action-setup la lee del campo
+      # `packageManager` de package.json. El fleet mezcla pnpm 9 y 10.
       - uses: pnpm/action-setup@v4
-        with:
-          version: ${{ inputs.pnpm-version }}
 
       - uses: actions/setup-node@v4
         with:
@@ -52,14 +49,22 @@ jobs:
           cache: pnpm
           registry-url: https://npm.pkg.github.com
 
+      # Deps git de la org privada Gundo-Health-and-Food no son clonables con el
+      # GITHUB_TOKEN del workflow. No hacen falta para lintear → se stripean
+      # (mismo patrón que el Dockerfile / CI de genie-api). Desincroniza el
+      # lockfile a propósito, por eso install corre con --no-frozen-lockfile.
+      - name: Strip private-org git deps
+        run: |
+          node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync('package.json'));let ch=false;for(const sec of ['dependencies','devDependencies']){const o=p[sec]||{};for(const k of Object.keys(o)){if(/git\+https:\/\/github.com\/Gundo-Health-and-Food\//.test(o[k]||'')){delete o[k];ch=true}}}if(ch){fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\n');console.log('stripped private-org git deps')}"
+
       - name: Install
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --no-frozen-lockfile
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Lint (full)
         if: ${{ inputs.ratchet == false }}
-        run: pnpm lint
+        run: pnpm exec eslint .
 
       - name: Lint (changed files only)
         if: ${{ inputs.ratchet == true && github.event_name == 'pull_request' }}

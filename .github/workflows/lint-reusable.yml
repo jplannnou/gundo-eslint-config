@@ -57,8 +57,11 @@ jobs:
         run: |
           node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync('package.json'));let ch=false;for(const sec of ['dependencies','devDependencies']){const o=p[sec]||{};for(const k of Object.keys(o)){if(/git\+https:\/\/github.com\/Gundo-Health-and-Food\//.test(o[k]||'')){delete o[k];ch=true}}}if(ch){fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\n');console.log('stripped private-org git deps')}"
 
+      # --ignore-scripts: lint no necesita lifecycle scripts (build/prepare) y
+      # varios repos tienen `prepare` que invoca binarios de la dep privada ya
+      # stripeada (ej. `cloud-build-gen install-hooks`) → sin esto, install rompe.
       - name: Install
-        run: pnpm install --no-frozen-lockfile
+        run: pnpm install --no-frozen-lockfile --ignore-scripts
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

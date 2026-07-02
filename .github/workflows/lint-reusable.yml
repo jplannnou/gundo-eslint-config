@@ -50,13 +50,15 @@ jobs:
           cache: pnpm
           registry-url: https://npm.pkg.github.com
 
-      # Deps git de la org privada Gundo-Health-and-Food no son clonables con el
-      # GITHUB_TOKEN del workflow. No hacen falta para lintear → se stripean
-      # (mismo patrón que el Dockerfile / CI de genie-api). Desincroniza el
-      # lockfile a propósito, por eso install corre con --no-frozen-lockfile.
-      - name: Strip private-org git deps
+      # Deps que NO son instalables en un checkout aislado de CI y que el lint
+      # NO necesita (lintea el source propio del repo, no sus deps):
+      #   - git de la org privada Gundo-Health-and-Food (GITHUB_TOKEN no clona)
+      #   - `file:` / `link:` (paquetes hermanos como @gundo/ui, no existen en CI)
+      # Se stripean (igual que el Dockerfile / CI de genie-api). Desincroniza el
+      # lockfile a propósito → install corre con --no-frozen-lockfile.
+      - name: Strip un-CI-installable deps
         run: |
-          node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync('package.json'));let ch=false;for(const sec of ['dependencies','devDependencies']){const o=p[sec]||{};for(const k of Object.keys(o)){if(/git\+https:\/\/github.com\/Gundo-Health-and-Food\//.test(o[k]||'')){delete o[k];ch=true}}}if(ch){fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\n');console.log('stripped private-org git deps')}"
+          node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync('package.json'));let ch=false;for(const sec of ['dependencies','devDependencies']){const o=p[sec]||{};for(const k of Object.keys(o)){const v=o[k]||'';if(/git\+https:\/\/github.com\/Gundo-Health-and-Food\//.test(v)||/^(file|link):/.test(v)){delete o[k];ch=true}}}if(ch){fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\n');console.log('stripped un-CI-installable deps')}"
 
       # --ignore-scripts: lint no necesita lifecycle scripts (build/prepare) y
       # varios repos tienen `prepare` que invoca binarios de la dep privada ya

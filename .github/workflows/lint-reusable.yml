@@ -1,0 +1,78 @@
+# Reusable lint workflow (RATCHET) para todo el fleet GUNDO.
+#
+# Por qué ratchet: varios repos tienen deuda de lint preexistente (ej. genie-api
+# ~172 errores en main). Un gate full nacería rojo y se ignoraría. Esto lintea
+# SOLO los archivos tocados por el PR → bloquea errores NUEVOS sin exigir el
+# burn-down primero. Cuando un repo termine su burn-down, cambia `ratchet: false`
+# para lintear el repo entero.
+#
+# Uso desde un repo consumidor (.github/workflows/ci.yml):
+#   jobs:
+#     lint:
+#       uses: jplannnou/gundo-eslint-config/.github/workflows/lint-reusable.yml@main
+#       secrets: inherit
+name: Lint (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      ratchet:
+        description: 'Lintear sólo archivos cambiados (true) o el repo entero (false)'
+        type: boolean
+        default: true
+      globs:
+        description: 'Extensiones a lintear'
+        type: string
+        default: '\.(ts|tsx|js|jsx)$'
+      pnpm-version:
+        type: string
+        default: '10.30.1'
+      node-version:
+        type: string
+        default: '22'
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ inputs.pnpm-version }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: pnpm
+          registry-url: https://npm.pkg.github.com
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Lint (full)
+        if: ${{ inputs.ratchet == false }}
+        run: pnpm lint
+
+      - name: Lint (changed files only)
+        if: ${{ inputs.ratchet == true && github.event_name == 'pull_request' }}
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          CHANGED=$(git diff --name-only --diff-filter=ACMR "origin/${BASE_REF}...HEAD" \
+            | grep -E "${{ inputs.globs }}" || true)
+          if [ -z "$CHANGED" ]; then
+            echo "No hay archivos lint-ables tocados por el PR."
+            exit 0
+          fi
+          echo "Linteando archivos cambiados:"
+          echo "$CHANGED"
+          pnpm exec eslint $CHANGED

@@ -63,8 +63,11 @@ jobs:
       # --ignore-scripts: lint no necesita lifecycle scripts (build/prepare) y
       # varios repos tienen `prepare` que invoca binarios de la dep privada ya
       # stripeada (ej. `cloud-build-gen install-hooks`) → sin esto, install rompe.
+      # auto-install-peers=false: no intentar instalar peerDependencies (ej.
+      # `@gundo/ui: "*"` en las libs) — no hacen falta para lintear el source
+      # propio y no existen en el registro público.
       - name: Install
-        run: pnpm install --no-frozen-lockfile --ignore-scripts
+        run: pnpm install --no-frozen-lockfile --ignore-scripts --config.auto-install-peers=false
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

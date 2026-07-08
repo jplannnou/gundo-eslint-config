@@ -19,5 +19,18 @@ export default [
     languageOptions: {
       globals: { ...globals.node },
     },
+    rules: {
+      // consistent-type-imports (error en base) se APAGA para NestJS. Su autofix
+      // convierte una clase @Injectable() inyectada por constructor a
+      // `import type`, que se borra en el JS emitido → en runtime NestJS resuelve
+      // la dependencia a `undefined` y la app crashea al arrancar
+      // ("Nest can't resolve dependencies of X (?)"). tsc pasa; el fallo es solo
+      // en runtime (se ve al bootear en Cloud Run, no en CI de tipos). El linter
+      // no puede distinguir de forma fiable un tipo usado para metadata de DI de
+      // un import type-only real, así que la regla es incompatible con la DI de
+      // NestJS y se desactiva a nivel preset (los presets react-vite/next/lib la
+      // conservan: ahí no hay DI por constructor y el hint de type-only sí aporta).
+      "@typescript-eslint/consistent-type-imports": "off",
+    },
   },
 ];

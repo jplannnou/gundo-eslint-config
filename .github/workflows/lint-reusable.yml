@@ -50,7 +50,26 @@ jobs:
       # `packageManager` de package.json. El fleet mezcla pnpm 9 y 10.
       - uses: pnpm/action-setup@v4
 
+      # setup-node va en dos variantes según el runner, y la diferencia es
+      # `cache: pnpm`. En los self-hosted del org el store de pnpm ya vive en
+      # disco local y persiste entre jobs (`pnpm store path` →
+      # /home/runner/.local/share/pnpm/store/v10, compartido por r1..r5), así
+      # que cachearlo contra el servicio de GitHub sólo agrega red: medido ~2 GB
+      # a 6 MB/s ≈ 5,5 min de peaje por job para traer algo que ya estaba en el
+      # disco. En hosted (ubuntu-latest, sin disco persistente) sí compensa.
+      #
+      # Van como dos steps con `if` y no como una expresión ternaria en `cache:`
+      # porque en las expresiones de Actions el string vacío es falsy, así que
+      # `cond && '' || 'pnpm'` colapsa siempre a 'pnpm' — no se puede apagar el
+      # caché por expresión.
       - uses: actions/setup-node@v4
+        if: inputs.runner == 'gundo-local'
+        with:
+          node-version: ${{ inputs.node-version }}
+          registry-url: https://npm.pkg.github.com
+
+      - uses: actions/setup-node@v4
+        if: inputs.runner != 'gundo-local'
         with:
           node-version: ${{ inputs.node-version }}
           cache: pnpm

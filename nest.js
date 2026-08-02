@@ -11,15 +11,27 @@
 // repos DEBEN correr en ESLint 10. Sin import, el preset funciona en 9 y 10.
 import globals from "globals";
 import base from "./base.js";
+import noUnsafeCorsSubdomain from "./rules/no-unsafe-cors-subdomain.js";
+
+// Plugin local del fleet. Reglas propias que capturan bugs que ya pagamos una
+// vez (ver rules/). Se registran solo en el preset donde aplican.
+const gundoPlugin = {
+  rules: { "no-unsafe-cors-subdomain": noUnsafeCorsSubdomain },
+};
 
 export default [
   ...base,
   {
     files: ["**/*.ts"],
+    plugins: { gundo: gundoPlugin },
     languageOptions: {
       globals: { ...globals.node },
     },
     rules: {
+      // Bug de CORS por subdominio (fitness/user-engine/payments, #15/#29/#32):
+      // comparar `.${host}` contra un origin con protocolo nunca matchea. La
+      // regla lo caza en cualquier servicio nuevo antes de que llegue a prod.
+      "gundo/no-unsafe-cors-subdomain": "error",
       // consistent-type-imports (error en base) se APAGA para NestJS. Su autofix
       // convierte una clase @Injectable() inyectada por constructor a
       // `import type`, que se borra en el JS emitido → en runtime NestJS resuelve

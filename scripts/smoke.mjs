@@ -20,4 +20,12 @@ for (const name of presets) {
   }
 }
 
+// Reglas custom del fleet: correr sus RuleTester (lanzan si un caso falla).
+try {
+  await import('./no-unsafe-cors-subdomain.test.mjs')
+} catch (err) {
+  console.error(`✗ no-unsafe-cors-subdomain: ${err.message}`)
+  failed = true
+}
+
 process.exit(failed ? 1 : 0)

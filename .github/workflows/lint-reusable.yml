@@ -6,6 +6,25 @@
 # burn-down primero. Cuando un repo termine su burn-down, cambia `ratchet: false`
 # para lintear el repo entero.
 #
+# El ratchet es incremental POR DEFINICIÓN: mide los archivos tocados contra una
+# base. En `pull_request` esa base existe y es obvia (`github.base_ref`). En un
+# `push` a main no la hay — el push ya ES la nueva verdad de la rama, así que no
+# hay contra qué "no empeorar". Por eso el step del ratchet nació atado a
+# `pull_request`: sin ese `if` reventaba al resolver `origin/` a secas.
+#
+# El agujero: no existía la otra rama del `if`. Con el default `ratchet: true`,
+# en push a main los DOS steps se saltaban, el job no linteaba nada y pasaba
+# verde. El estado de lint de main no significaba nada en todo el fleet, y en los
+# repos donde este workflow es el ÚNICO check (product-pipeline) main llevaba
+# meses sin verificarse.
+#
+# Arreglo: el MODO lo decide el evento, no sólo el input.
+#   - pull_request → ratchet incremental (si `ratchet: true`): bloquea errores
+#     nuevos sin exigir el burn-down previo. Es el gate de merge.
+#   - push (y cualquier otro evento) → lint COMPLETO, siempre. En una rama ya
+#     mergeada lo único que se puede afirmar es el estado absoluto, que es justo
+#     lo que un ratchet nunca puede decir. Es señal post-merge, no gate de merge.
+#
 # Uso desde un repo consumidor (.github/workflows/ci.yml):
 #   jobs:
 #     lint:
@@ -23,7 +42,10 @@ on:
         type: string
         default: 'ubuntu-latest'
       ratchet:
-        description: 'Lintear sólo archivos cambiados (true) o el repo entero (false)'
+        description: >-
+          Lintear sólo archivos cambiados (true) o el repo entero (false).
+          SÓLO aplica en `pull_request`: fuera de un PR no hay base contra la
+          que medir, así que el lint es completo pase lo que pase aquí.
         type: boolean
         default: true
       globs:
@@ -96,8 +118,12 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # Los dos `if` de abajo son EXHAUSTIVOS y mutuamente excluyentes a
+      # propósito: ratchet=false → full; ratchet=true + PR → incremental;
+      # ratchet=true + no-PR → full. Que no vuelva a existir una combinación sin
+      # step, que es exactamente como el job pasaba verde sin lintear.
       - name: Lint (full)
-        if: ${{ inputs.ratchet == false }}
+        if: ${{ inputs.ratchet == false || github.event_name != 'pull_request' }}
         run: pnpm exec eslint .
 
       - name: Lint (changed files only)

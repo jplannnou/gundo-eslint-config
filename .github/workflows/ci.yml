@@ -27,3 +27,35 @@ jobs:
         run: pnpm lint
       - name: Smoke — all presets load
         run: pnpm test
+
+  # El fleet no corre una sola versión de ESLint: hay repos en 9 (gundo-ui) y
+  # repos que DEBEN estar en 10 (overrides de brace-expansion). El peer del
+  # paquete dice `>=9`, así que el paquete tiene que demostrarlo en las dos.
+  # Sin esta matriz, un plugin que sólo funciona en 9 se publica verde y rompe
+  # el lint de los consumidores en 10 — que es exactamente lo que pasó con
+  # eslint-plugin-import 2.x.
+  eslint-matrix:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        eslint: ['9', '10']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.30.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: https://npm.pkg.github.com
+      - run: pnpm install --frozen-lockfile
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Instalar ESLint ${{ matrix.eslint }}
+        run: pnpm add -D eslint@^${{ matrix.eslint }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Smoke — las reglas corren en ESLint ${{ matrix.eslint }}
+        run: pnpm test

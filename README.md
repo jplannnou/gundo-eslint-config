@@ -51,6 +51,23 @@ export default [
 
 Script en `package.json`: `"lint": "eslint ."` (Next 16 removió `next lint`).
 
+## Orden de imports (`import-x/order`, sólo preset `/nest`)
+
+El preset `/nest` trae `import-x/order` en **warn** (hueco entre grupos,
+alfabético case-insensitive). El plugin es
+[`eslint-plugin-import-x`](https://github.com/un-ts/eslint-plugin-import-x), el
+fork mantenido — **no** `eslint-plugin-import`. Consecuencias prácticas:
+
+- El id de la regla es `import-x/order`, no `import/order`. Un
+  `// eslint-disable-next-line import/order` **no** desactiva nada.
+- No instales `eslint-plugin-import` en un repo del fleet. Su 2.x llama a
+  `sourceCode.getTokenOrCommentAfter()`, borrada en ESLint 10: no reporta un
+  error de lint, mata el proceso con `exit 2` y tumba el lint entero.
+
+El paquete soporta ESLint 9 **y** 10 (peer `>=9`), y el CI lo verifica en
+ambas: `pnpm test` ejecuta las reglas de cada preset sobre código real, así que
+un plugin que sólo carga pero no corre falla el build.
+
 ## CI (ratchet)
 
 En `.github/workflows/ci.yml` del repo:

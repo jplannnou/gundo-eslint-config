@@ -113,8 +113,18 @@ jobs:
       # auto-install-peers=false: no intentar instalar peerDependencies (ej.
       # `@gundo/ui: "*"` en las libs) — no hacen falta para lintear el source
       # propio y no existen en el registro público.
+      # --store-dir EXPLICITO. Sin el, pnpm deriva el store de PNPM_HOME, que
+      # `pnpm/action-setup` fija DENTRO de su propio directorio y rehace en cada
+      # job: el store queda efimero, el install ve el lockfile completo, decide
+      # que no hay nada que resolver ("resolved 0, reused 1") y luego revienta al
+      # leerlo con ERR_PNPM_READ_FROM_STORE. El 17-ago eso tumbo el CI de
+      # genie-api entero —main incluida— y este reusable caia igual, porque el
+      # fallo no es del repo que lintea sino de donde vive el store.
+      #
+      # Fijandolo bajo $HOME el store persiste entre jobs, y como este workflow
+      # lo usan todos los repos del ecosistema, el arreglo va aqui una sola vez.
       - name: Install
-        run: pnpm install --no-frozen-lockfile --ignore-scripts --config.auto-install-peers=false
+        run: pnpm install --no-frozen-lockfile --ignore-scripts --config.auto-install-peers=false --store-dir "$HOME/.pnpm-store"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

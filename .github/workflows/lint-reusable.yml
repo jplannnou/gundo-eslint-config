@@ -40,7 +40,7 @@ on:
           Label del runner del job. Default ubuntu-latest (GitHub-hosted);
           los repos del org pasan `gundo-local` (self-hosted, migración 2026-07).
         type: string
-        default: 'ubuntu-latest'
+        default: "ubuntu-latest"
       ratchet:
         description: >-
           Lintear sólo archivos cambiados (true) o el repo entero (false).
@@ -49,12 +49,12 @@ on:
         type: boolean
         default: true
       globs:
-        description: 'Extensiones a lintear (regex para grep -E)'
+        description: "Extensiones a lintear (regex para grep -E)"
         type: string
         default: '\.(ts|tsx|js|jsx)$'
       node-version:
         type: string
-        default: '22'
+        default: "22"
 
 permissions:
   contents: read
@@ -89,6 +89,30 @@ jobs:
         with:
           node-version: ${{ inputs.node-version }}
           registry-url: https://npm.pkg.github.com
+
+      # Fijar el store ANTES de setup-node, y no solo en el `Install` de abajo.
+      #
+      # `setup-node` con `cache: pnpm` resuelve la ruta a cachear al arrancar,
+      # preguntando `pnpm store path`. Sin esta línea contesta la ruta derivada
+      # de PNPM_HOME —que `pnpm/action-setup` planta dentro de su propio
+      # directorio— mientras que el `Install` instala en `$HOME/.pnpm-store`.
+      # Al terminar el job, setup-node intenta guardar la primera, que nunca
+      # llegó a existir, y el post-step falla con:
+      #
+      #     Path Validation Error: Path(s) specified in the action for caching
+      #     do(es) not exist, hence no cache is being saved.
+      #
+      # El lint HABÍA PASADO. Lo que se pone rojo es la limpieza posterior, así
+      # que el check miente en la dirección peor: rojo con el trabajo bien
+      # hecho. Y como este reusable lo usan todos los repos del ecosistema, el
+      # rojo aparece en PRs de gente que no ha tocado nada de esto — que es
+      # exactamente cómo se aprende a ignorar un check.
+      #
+      # Solo en hosted: el self-hosted no cachea (ver arriba) y ahí el store ya
+      # persiste en disco.
+      - name: Fijar el store de pnpm antes de que setup-node lo cachee
+        if: inputs.runner != 'gundo-local'
+        run: pnpm config set store-dir "$HOME/.pnpm-store" --global
 
       - uses: actions/setup-node@v4
         if: inputs.runner != 'gundo-local'

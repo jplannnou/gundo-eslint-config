@@ -38,7 +38,8 @@ on:
       runner:
         description: >-
           Label del runner del job. Default ubuntu-latest (GitHub-hosted);
-          los repos del org pasan `gundo-local` (self-hosted, migración 2026-07).
+          los repos del org pasan `gundo-local` y los privados personales
+          `jp-local` (self-hosted).
         type: string
         default: "ubuntu-latest"
       ratchet:
@@ -73,9 +74,9 @@ jobs:
       - uses: pnpm/action-setup@v4
 
       # setup-node va en dos variantes según el runner, y la diferencia es
-      # `cache: pnpm`. En los self-hosted del org el store de pnpm ya vive en
-      # disco local y persiste entre jobs (`pnpm store path` →
-      # /home/runner/.local/share/pnpm/store/v10, compartido por r1..r5), así
+      # `cache: pnpm`. En los self-hosted el store de pnpm ya vive en disco
+      # local y persiste entre jobs (`pnpm store path` →
+      # /home/runner/.local/share/pnpm/store/v10 en la flota del org), así
       # que cachearlo contra el servicio de GitHub sólo agrega red: medido ~2 GB
       # a 6 MB/s ≈ 5,5 min de peaje por job para traer algo que ya estaba en el
       # disco. En hosted (ubuntu-latest, sin disco persistente) sí compensa.
@@ -85,7 +86,7 @@ jobs:
       # `cond && '' || 'pnpm'` colapsa siempre a 'pnpm' — no se puede apagar el
       # caché por expresión.
       - uses: actions/setup-node@v4
-        if: inputs.runner == 'gundo-local'
+        if: inputs.runner == 'gundo-local' || inputs.runner == 'jp-local'
         with:
           node-version: ${{ inputs.node-version }}
           registry-url: https://npm.pkg.github.com
@@ -111,11 +112,11 @@ jobs:
       # Solo en hosted: el self-hosted no cachea (ver arriba) y ahí el store ya
       # persiste en disco.
       - name: Fijar el store de pnpm antes de que setup-node lo cachee
-        if: inputs.runner != 'gundo-local'
+        if: inputs.runner != 'gundo-local' && inputs.runner != 'jp-local'
         run: pnpm config set store-dir "$HOME/.pnpm-store" --global
 
       - uses: actions/setup-node@v4
-        if: inputs.runner != 'gundo-local'
+        if: inputs.runner != 'gundo-local' && inputs.runner != 'jp-local'
         with:
           node-version: ${{ inputs.node-version }}
           cache: pnpm

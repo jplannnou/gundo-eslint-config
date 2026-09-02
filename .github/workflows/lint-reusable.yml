@@ -29,7 +29,14 @@
 #   jobs:
 #     lint:
 #       uses: jplannnou/gundo-eslint-config/.github/workflows/lint-reusable.yml@main
-#       secrets: inherit
+#       with:
+#         runner: gundo-local   # `jp-local` en los repos privados personales
+#
+# NO pongas `secrets: inherit`. Este workflow no declara bloque `secrets:` en
+# su `on.workflow_call`, y el unico que usa es `secrets.GITHUB_TOKEN`, que se
+# pasa solo. `inherit` mandaria TODOS los secretos del repo llamante a un
+# reusable de otra cuenta referenciado por una rama movil, sin necesitar
+# ninguno. Semgrep lo marca ERROR/HIGH y bloquea el gate privado.
 name: Lint (reusable)
 
 on:

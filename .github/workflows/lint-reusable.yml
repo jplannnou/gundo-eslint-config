@@ -37,11 +37,11 @@ on:
     inputs:
       runner:
         description: >-
-          Label del runner del job. Default ubuntu-latest (GitHub-hosted);
-          los repos del org pasan `gundo-local` y los privados personales
-          `jp-local` (self-hosted).
+          Label del runner self-hosted: `gundo-local` en los repos del org,
+          `jp-local` en los privados personales. Sin default a proposito: un
+          default alojado convertia cada olvido en minutos de pago silenciosos.
         type: string
-        default: "ubuntu-latest"
+        required: true
       ratchet:
         description: >-
           Lintear sólo archivos cambiados (true) o el repo entero (false).
@@ -63,7 +63,7 @@ permissions:
 
 jobs:
   lint:
-    runs-on: ${{ inputs.runner }}
+    runs-on: [self-hosted, "${{ inputs.runner }}"]
     steps:
       - uses: actions/checkout@v4
         with:

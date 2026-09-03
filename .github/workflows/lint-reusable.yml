@@ -85,10 +85,18 @@ jobs:
     # arrancaban en `startup_failure` desde el 2-sep. En un repo publico los
     # minutos alojados son gratis, con lo que el motivo de exigir self-hosted
     # ahi no existe.
+    # El `fromJSON` va FUERA de las ramas a proposito. Con el dentro
+    # —`cond && fromJSON(a) || fromJSON(b)`— las ramas devuelven arrays, y en
+    # las expresiones de GitHub un array se convierte a NaN en contexto
+    # booleano, o sea FALSY: el `||` gana siempre y salia
+    # `[self-hosted, ubuntu-latest]`, que no existe. Medido en el primer
+    # intento: `labels=self-hosted,ubuntu-latest`, job encolado sin fin.
+    # Ramificando sobre CADENAS el operador se comporta, y `fromJSON` envuelve
+    # el resultado ya elegido.
     runs-on: >-
-      ${{ startsWith(inputs.runner, 'ubuntu-')
-          && fromJSON(format('["{0}"]', inputs.runner))
-          || fromJSON(format('["self-hosted","{0}"]', inputs.runner)) }}
+      ${{ fromJSON(startsWith(inputs.runner, 'ubuntu-')
+          && format('["{0}"]', inputs.runner)
+          || format('["self-hosted","{0}"]', inputs.runner)) }}
     steps:
       - uses: actions/checkout@v4
         with:

@@ -30,7 +30,8 @@
 #     lint:
 #       uses: jplannnou/gundo-eslint-config/.github/workflows/lint-reusable.yml@main
 #       with:
-#         runner: gundo-local   # `jp-local` en los repos privados personales
+#         runner: gundo-local   # `jp-local` en los privados personales;
+#                               # `ubuntu-latest` en los PUBLICOS (minutos gratis)
 #
 # NO pongas `secrets: inherit`. Este workflow no declara bloque `secrets:` en
 # su `on.workflow_call`, y el unico que usa es `secrets.GITHUB_TOKEN`, que se
@@ -44,9 +45,12 @@ on:
     inputs:
       runner:
         description: >-
-          Label del runner self-hosted: `gundo-local` en los repos del org,
-          `jp-local` en los privados personales. Sin default a proposito: un
-          default alojado convertia cada olvido en minutos de pago silenciosos.
+          Donde corre el lint. `gundo-local` en los repos del org, `jp-local`
+          en los privados personales, o una etiqueta alojada (`ubuntu-latest`)
+          en los repos PUBLICOS, donde los minutos son gratis. Sigue sin
+          default a proposito: un default alojado convertia cada olvido en
+          minutos de pago silenciosos, y esa parte no cambia — hay que decir
+          donde se quiere correr.
         type: string
         required: true
       ratchet:
@@ -70,7 +74,21 @@ permissions:
 
 jobs:
   lint:
-    runs-on: [self-hosted, "${{ inputs.runner }}"]
+    # Una etiqueta `ubuntu-*` va sola; cualquier otra se combina con
+    # `self-hosted`, exactamente como antes.
+    #
+    # Antes esto era `[self-hosted, "${{ inputs.runner }}"]` fijo, y eso dejaba
+    # a los repos PUBLICOS sin salida: `gundo-ui` y `gundo-feedback-sdk` no
+    # tienen runner propio —los `gundo-local` estan registrados en el org, y un
+    # repo de cuenta personal no los alcanza— asi que cualquier valor producia
+    # un job encolado para siempre. Como ademas `runner` es requerido, sus PRs
+    # arrancaban en `startup_failure` desde el 2-sep. En un repo publico los
+    # minutos alojados son gratis, con lo que el motivo de exigir self-hosted
+    # ahi no existe.
+    runs-on: >-
+      ${{ startsWith(inputs.runner, 'ubuntu-')
+          && fromJSON(format('["{0}"]', inputs.runner))
+          || fromJSON(format('["self-hosted","{0}"]', inputs.runner)) }}
     steps:
       - uses: actions/checkout@v4
         with:

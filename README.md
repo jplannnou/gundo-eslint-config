@@ -76,12 +76,26 @@ En `.github/workflows/ci.yml` del repo:
 jobs:
   lint:
     uses: jplannnou/gundo-eslint-config/.github/workflows/lint-reusable.yml@main
-    secrets: inherit
+    with:
+      runner: gundo-local # `jp-local` en privados personales; `ubuntu-latest` en PÚBLICOS
 ```
+
+`runner` es obligatorio. **No pongas `secrets: inherit`**: el reusable sólo usa
+`GITHUB_TOKEN`, que se pasa solo, e `inherit` mandaría todos los secretos del
+repo a un workflow de otra cuenta referenciado por una rama móvil.
 
 Por defecto lintea **sólo archivos cambiados** (ratchet) — bloquea errores
 nuevos sin exigir arreglar la deuda preexistente primero. Cuando termines el
 burn-down de un repo: `with: { ratchet: false }`.
+
+Ojo, el ratchet sólo existe en `pull_request`. En push a la rama por defecto el
+lint es siempre **completo**. Por eso `globs` (qué extensiones mira el ratchet)
+tiene que cubrir todo lo que lintean los presets: el default incluye
+`ts|tsx|mts|cts|js|jsx|mjs|cjs` y `pnpm test` falla si deja de ser así. Si
+cambias `globs` en un repo, no quites extensiones que ese repo lintee en push.
+
+Con `ratchet: false` el PR corre el mismo `eslint .` que el push, y desaparece
+esta clase de desajuste.
 
 ## Versionado
 

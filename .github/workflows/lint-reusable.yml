@@ -61,9 +61,14 @@ on:
         type: boolean
         default: true
       globs:
-        description: "Extensiones a lintear (regex para grep -E)"
+        description: >-
+          Extensiones a lintear en el ratchet (regex para grep -E). Tiene que
+          cubrir todo lo que los presets lintean en push: si no, un error en
+          un .mjs/.cjs pasa el PR y falla después del merge. Antes del
+          03-oct-2026 el default dejaba fuera mjs/cjs/mts/cts y mordió en
+          cuatro repos del fleet. `pnpm test` (scripts/smoke.mjs) lo comprueba.
         type: string
-        default: '\.(ts|tsx|js|jsx)$'
+        default: '\.(ts|tsx|mts|cts|js|jsx|mjs|cjs)$'
       node-version:
         type: string
         default: "22"

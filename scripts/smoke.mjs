@@ -149,4 +149,49 @@ try {
   failed = true
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// Guarda del RELEASE: ningún plugin de semantic-release puede escribir en `main`.
+//
+// Por qué existe: `main` está protegida (PR obligatorio + check `validate`) y el
+// GITHUB_TOKEN del workflow no puede saltarse esa protección. `@semantic-release/git`
+// crea un commit `chore(release)` y lo empuja a `main`: GitHub lo rechaza con
+// GH006 y el release revienta en `prepare`, ANTES de publicar. Estuvo en rojo en
+// cada push a `main` desde 2026-09-03, con el último release en v1.4.3.
+// La versión sale de los tags y del registro; el `version` de package.json es un
+// marcador y no se commitea de vuelta. El núcleo sólo empuja tags (`git push --tags`).
+//
+// Si no se puede leer la config, FALLA: una guarda que no puede comprobar nada
+// no puede pasar en verde.
+try {
+  const { readFile } = await import('node:fs/promises')
+  const leer = async (ruta) =>
+    JSON.parse(await readFile(new URL(`../${ruta}`, import.meta.url), 'utf8'))
+  const pkg = await leer('package.json')
+  const rc = await leer('.releaserc.json')
+
+  // Una clave `release` en package.json gana a `.releaserc.json` (cosmiconfig) y
+  // dejaría esta guarda comprobando una config que semantic-release ni mira.
+  if (pkg.release !== undefined) {
+    throw new Error(
+      'package.json tiene una clave `release`: semantic-release la usaría en vez de .releaserc.json y esta guarda no vería los plugins reales',
+    )
+  }
+  if (!Array.isArray(rc.plugins)) throw new Error('.releaserc.json no declara `plugins`')
+
+  const nombres = rc.plugins.map((p) => (Array.isArray(p) ? p[0] : p))
+  const escribenEnMain = nombres.filter((n) => n === '@semantic-release/git')
+  if (escribenEnMain.length === 0) {
+    console.info(`✓ release: ningún plugin empuja commits a main (${nombres.join(', ')})`)
+  } else {
+    console.error(
+      `✗ release: ${escribenEnMain.join(', ')} empuja un commit a \`main\`, que está protegida: ` +
+        'GitHub lo rechaza (GH006) y el release falla antes de publicar. Quita el plugin; la versión sale de los tags.',
+    )
+    failed = true
+  }
+} catch (err) {
+  console.error(`✗ release: ${err.message}`)
+  failed = true
+}
+
 process.exit(failed ? 1 : 0)

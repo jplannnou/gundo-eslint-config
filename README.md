@@ -100,3 +100,11 @@ esta clase de desajuste.
 ## Versionado
 
 `semantic-release` publica en cada push a `main` (commits convencionales).
+
+La versión sale de los **tags** (`vX.Y.Z`) y del registro de GitHub Packages, no de
+`package.json`: su `version` es el marcador `0.0.0-development` y el release **no
+commitea nada de vuelta a `main`**. `main` está protegida (PR obligatorio + check
+`validate`) y el `GITHUB_TOKEN` del workflow no puede saltarse esa protección, así
+que un plugin que empuje un commit (`@semantic-release/git`) rompe el release con
+GH006 antes de publicar. `pnpm test` falla si alguien lo repone. Para saber qué hay
+publicado, mira los tags o `gh release list`, no `package.json`.

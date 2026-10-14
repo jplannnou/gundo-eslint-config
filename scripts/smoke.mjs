@@ -224,4 +224,32 @@ try {
   failed = true
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// Guarda del CHECKOUT: nada de `fetch-depth: 0`.
+//
+// Por qué existe: con historia completa, actions/checkout trae TODAS las ramas
+// y tags. En macOS (APFS, sin distinción de mayúsculas) un repo con ramas que
+// solo difieren en mayúsculas (`Staging`/`staging` en ecom) rompe el fetch y
+// el job muere antes de lintear. El ratchet solo necesita la rama base, que la
+// trae su propio step.
+try {
+  const { readFile } = await import('node:fs/promises')
+  const wf = await readFile(new URL('../.github/workflows/lint-reusable.yml', import.meta.url), 'utf8')
+  const codigo = wf.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n')
+  const todoElRepo = /fetch-depth:\s*0\b/.test(codigo)
+  const traeBase = /refs\/heads\/\$\{BASE_REF\}:refs\/remotes\/origin\/\$\{BASE_REF\}/.test(codigo)
+  if (!todoElRepo && traeBase) {
+    console.info('✓ checkout: superficial + solo la rama base para el ratchet')
+  } else {
+    console.error(
+      `✗ checkout: ${todoElRepo ? 'usa fetch-depth: 0 (trae todas las ramas; rompe en macOS)' : ''}` +
+        `${traeBase ? '' : ' falta el fetch de la rama base que necesita el ratchet'}`,
+    )
+    failed = true
+  }
+} catch (err) {
+  console.error(`✗ checkout: ${err.message}`)
+  failed = true
+}
+
 process.exit(failed ? 1 : 0)

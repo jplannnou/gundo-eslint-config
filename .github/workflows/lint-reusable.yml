@@ -72,6 +72,10 @@ on:
       node-version:
         type: string
         default: "22"
+      lightweight:
+        description: "Limit lint to a 2 GiB Node heap, two workers and a 20 minute job; verify ESLint on the actual runner."
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -79,6 +83,7 @@ permissions:
 
 jobs:
   lint:
+    timeout-minutes: ${{ inputs.lightweight && 20 || 360 }}
     # Una etiqueta `ubuntu-*` va sola; cualquier otra se combina con
     # `self-hosted`, exactamente como antes.
     #
@@ -124,7 +129,7 @@ jobs:
       # `cond && '' || 'pnpm'` colapsa siempre a 'pnpm' — no se puede apagar el
       # caché por expresión.
       - uses: actions/setup-node@v4
-        if: inputs.runner == 'gundo-local' || inputs.runner == 'jp-local'
+        if: runner.environment == 'self-hosted'
         with:
           node-version: ${{ inputs.node-version }}
           registry-url: https://npm.pkg.github.com
@@ -150,11 +155,11 @@ jobs:
       # Solo en hosted: el self-hosted no cachea (ver arriba) y ahí el store ya
       # persiste en disco.
       - name: Fijar el store de pnpm antes de que setup-node lo cachee
-        if: inputs.runner != 'gundo-local' && inputs.runner != 'jp-local'
+        if: runner.environment == 'github-hosted'
         run: pnpm config set store-dir "$HOME/.pnpm-store" --global
 
       - uses: actions/setup-node@v4
-        if: inputs.runner != 'gundo-local' && inputs.runner != 'jp-local'
+        if: runner.environment == 'github-hosted'
         with:
           node-version: ${{ inputs.node-version }}
           cache: pnpm
@@ -187,9 +192,36 @@ jobs:
       # Fijandolo bajo $HOME el store persiste entre jobs, y como este workflow
       # lo usan todos los repos del ecosistema, el arreglo va aqui una sola vez.
       - name: Install
-        run: pnpm install --no-frozen-lockfile --ignore-scripts --config.auto-install-peers=false --store-dir "$HOME/.pnpm-store"
+        run: |
+          if [ "$LIGHTWEIGHT" = "true" ]; then
+            export NODE_OPTIONS=--max-old-space-size=2048 UV_THREADPOOL_SIZE=2 npm_config_jobs=2
+          fi
+          pnpm install --no-frozen-lockfile --ignore-scripts --config.auto-install-peers=false --store-dir "$HOME/.pnpm-store"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LIGHTWEIGHT: ${{ inputs.lightweight }}
+
+      # This runs even when a routing-only PR has no source files in its diff.
+      # Exercise ESLint itself, including rejection of invalid code, on this runner.
+      - name: Verify lightweight lint execution
+        if: inputs.lightweight
+        env:
+          NODE_OPTIONS: --max-old-space-size=2048
+          UV_THREADPOOL_SIZE: "2"
+          npm_config_jobs: "2"
+        run: |
+          node --input-type=module -e '
+          import assert from "node:assert/strict";
+          import { ESLint } from "eslint";
+          import { getHeapStatistics } from "node:v8";
+          const eslint = new ESLint({ overrideConfigFile: true, overrideConfig: [{ rules: { "no-undef": "error" } }] });
+          const valid = await eslint.lintText("const answer = 42; void answer;", { filePath: "runner-smoke.js" });
+          const invalid = await eslint.lintText("missingRunnerIdentifier();", { filePath: "runner-smoke.js" });
+          assert.equal(valid[0].errorCount, 0);
+          assert.ok(invalid[0].messages.some(message => message.ruleId === "no-undef"));
+          assert.equal(process.env.NODE_OPTIONS, "--max-old-space-size=2048");
+          console.log(JSON.stringify({ runner: process.env.RUNNER_NAME, os: process.env.RUNNER_OS, node: process.version, heapLimitMiB: Math.round(getHeapStatistics().heap_size_limit / 1024 / 1024), validAccepted: true, invalidRejected: true }));
+          '
 
       # Los dos `if` de abajo son EXHAUSTIVOS y mutuamente excluyentes a
       # propósito: ratchet=false → full; ratchet=true + PR → incremental;
@@ -197,14 +229,24 @@ jobs:
       # step, que es exactamente como el job pasaba verde sin lintear.
       - name: Lint (full)
         if: ${{ inputs.ratchet == false || github.event_name != 'pull_request' }}
-        run: pnpm exec eslint .
+        env:
+          LIGHTWEIGHT: ${{ inputs.lightweight }}
+        run: |
+          if [ "$LIGHTWEIGHT" = "true" ]; then
+            export NODE_OPTIONS=--max-old-space-size=2048 UV_THREADPOOL_SIZE=2 npm_config_jobs=2
+          fi
+          pnpm exec eslint .
 
       - name: Lint (changed files only)
         if: ${{ inputs.ratchet == true && github.event_name == 'pull_request' }}
         env:
           BASE_REF: ${{ github.base_ref }}
+          LIGHTWEIGHT: ${{ inputs.lightweight }}
         run: |
           set -euo pipefail
+          if [ "$LIGHTWEIGHT" = "true" ]; then
+            export NODE_OPTIONS=--max-old-space-size=2048 UV_THREADPOOL_SIZE=2 npm_config_jobs=2
+          fi
           CHANGED=$(git diff --name-only --diff-filter=ACMR "origin/${BASE_REF}...HEAD" \
             | grep -E "${{ inputs.globs }}" || true)
           if [ -z "$CHANGED" ]; then

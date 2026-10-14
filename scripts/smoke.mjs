@@ -194,4 +194,34 @@ try {
   failed = true
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// Guarda del RUNNER: hosted vs self-hosted se decide con un solo criterio.
+//
+// Por qué existe: `runs-on` trataba como self-hosted todo lo que no fuera
+// `ubuntu-*`, pero los steps de setup-node comparaban contra una lista fija
+// (`gundo-local`/`jp-local`). Un carril nuevo (`gundo-light`, `gundo-main`)
+// corría en self-hosted con los steps de hosted y descargaba ~2 GB de caché
+// pnpm en cada job. Ningún `if:` puede volver a comparar `inputs.runner` con
+// una etiqueta concreta.
+try {
+  const { readFile } = await import('node:fs/promises')
+  const wf = await readFile(new URL('../.github/workflows/lint-reusable.yml', import.meta.url), 'utf8')
+  const ifs = wf.split('\n').filter((l) => /^\s*if:/.test(l) && l.includes('inputs.runner'))
+  const fijas = ifs.filter((l) => /inputs\.runner\s*[!=]=/.test(l))
+  const conCriterio = ifs.filter((l) => l.includes("startsWith(inputs.runner, 'ubuntu-')"))
+  if (ifs.length === 0) throw new Error('no encuentro ningún `if:` que mire inputs.runner')
+  if (fijas.length === 0 && conCriterio.length === ifs.length) {
+    console.info(`✓ runner: ${ifs.length} steps usan el criterio de runs-on (startsWith 'ubuntu-')`)
+  } else {
+    console.error(
+      `✗ runner: hay steps que comparan inputs.runner con una etiqueta fija:\n${fijas.concat(ifs.filter((l) => !conCriterio.includes(l))).join('\n')}\n` +
+        "Usa startsWith(inputs.runner, 'ubuntu-'), el mismo criterio que runs-on.",
+    )
+    failed = true
+  }
+} catch (err) {
+  console.error(`✗ runner: ${err.message}`)
+  failed = true
+}
+
 process.exit(failed ? 1 : 0)

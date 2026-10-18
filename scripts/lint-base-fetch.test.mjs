@@ -7,6 +7,7 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -152,6 +153,8 @@ function runFetch(outcomes, { baseRef = 'main', ...repositoryOptions } = {}) {
     const state = join(root, 'state.txt')
     const log = join(root, 'git.log')
     writeFileSync(script, extractRunStep('Traer la rama base'))
+    chmodSync(script, 0o755)
+    if (!isWindows) assert.equal(statSync(script).mode & 0o111, 0o111)
     writeFileSync(state, '0')
     writeFileSync(log, '')
     const env = { ...process.env }

@@ -212,16 +212,78 @@ jobs:
       # Solo la rama base, con historia completa para que `base...HEAD`
       # encuentre el merge-base. `--unshallow` solo si el repo sigue superficial:
       # en self-hosted el directorio de trabajo se reutiliza y puede venir
-      # completo de un job anterior, y ahí git rechaza `--unshallow`.
+      # completo de un job anterior, y ahí git rechaza `--unshallow`. Cinco
+      # minutos cubren esta única rama y evitan retener el runner si Git se cuelga.
       - name: Traer la rama base
         if: ${{ inputs.ratchet == true && github.event_name == 'pull_request' }}
+        timeout-minutes: 5
         env:
           BASE_REF: ${{ github.base_ref }}
         run: |
           set -euo pipefail
-          UNSHALLOW=""
-          if [ "$(git rev-parse --is-shallow-repository)" = "true" ]; then UNSHALLOW="--unshallow"; fi
-          git fetch --no-tags $UNSHALLOW origin "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
+
+          if ! git check-ref-format --branch "$BASE_REF" >/dev/null 2>&1; then
+            echo "::error::La rama base recibida no es una referencia Git válida."
+            exit 2
+          fi
+
+          # La salida de Git puede incluir credenciales en una URL. Se usa sólo
+          # para clasificar el fallo y se elimina siempre, sin imprimirla.
+          umask 077
+          FETCH_ERROR=$(mktemp "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/gundo-lint-fetch.XXXXXX")
+          trap 'rm -f "$FETCH_ERROR"' EXIT
+
+          is_retryable_transport_failure() {
+            grep -Eiq -- \
+              'Could not resolve host|Failed to connect to .* port [0-9]+|Connection (timed out|reset( by peer)?)|Operation timed out|Recv failure|Send failure|Empty reply from server|RPC failed; curl (7|18|28|52|55|56|92)|HTTP/[0-9.]+ stream [0-9]+ was not closed cleanly|early EOF|remote end hung up unexpectedly' \
+              "$1"
+          }
+
+          is_permanent_fetch_failure() {
+            grep -Eiq -- \
+              'Authentication failed|Invalid username or password|could not read (Username|Password)|Permission denied|The requested URL returned error: (401|403)|Repository not found|couldn.t find remote ref|remote ref does not exist|SSL certificate problem|certificate verify failed|unable to get local issuer certificate|SEC_E_UNTRUSTED_ROOT|server certificate verification failed|TLS: failed to verify certificate' \
+              "$1"
+          }
+
+          FETCH_STATUS=1
+          for ATTEMPT in 1 2 3; do
+            UNSHALLOW=()
+            if [ "$(git rev-parse --is-shallow-repository)" = "true" ]; then
+              UNSHALLOW=(--unshallow)
+            fi
+
+            : > "$FETCH_ERROR"
+            set +e
+            LC_ALL=C git fetch --no-tags "${UNSHALLOW[@]}" origin \
+              "+refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}" >"$FETCH_ERROR" 2>&1
+            FETCH_STATUS=$?
+            set -e
+
+            if [ "$FETCH_STATUS" -eq 0 ]; then
+              break
+            fi
+            if is_permanent_fetch_failure "$FETCH_ERROR" || \
+              ! is_retryable_transport_failure "$FETCH_ERROR"; then
+              echo "::error::No se pudo traer la rama base por un fallo no reintentable."
+              exit "$FETCH_STATUS"
+            fi
+            if [ "$ATTEMPT" -eq 3 ]; then
+              echo "::error::No se pudo traer la rama base tras 3 fallos transitorios de red."
+              exit "$FETCH_STATUS"
+            fi
+            echo "::warning::Fallo transitorio al traer la rama base; reintento $((ATTEMPT + 1)) de 3."
+            sleep "$ATTEMPT"
+          done
+
+          REMOTE_BASE="refs/remotes/origin/${BASE_REF}"
+          if ! git rev-parse --verify --quiet "${REMOTE_BASE}^{commit}" >/dev/null; then
+            echo "::error::El fetch terminó sin crear la referencia remota esperada."
+            exit 1
+          fi
+          if ! git merge-base "$REMOTE_BASE" HEAD >/dev/null; then
+            echo "::error::La rama base y HEAD no tienen un ancestro común verificable."
+            exit 1
+          fi
 
       - name: Lint (changed files only)
         if: ${{ inputs.ratchet == true && github.event_name == 'pull_request' }}

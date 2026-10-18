@@ -23,7 +23,7 @@
   ],
   "scripts": {
     "lint": "eslint .",
-    "test": "node ./scripts/smoke.mjs"
+    "test": "node ./scripts/smoke.mjs && node --test ./scripts/lint-base-fetch.test.mjs"
   },
   "dependencies": {
     "@eslint/js": "^9.39.0",

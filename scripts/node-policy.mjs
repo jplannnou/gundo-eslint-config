@@ -12,7 +12,13 @@
 // leerlo. Una línea con `node-policy: allow` se salta, para las excepciones
 // justificadas, que así quedan a la vista en el diff.
 //
-// Uso: node scripts/node-policy.mjs [dir]   → sale con 1 si hay violaciones.
+// Además se comprueba en Docker Hub que cada `FROM node:<tag>` existe: la
+// imagen oficial sale horas o días después de la release de Node, y fijar el
+// patch del `.nvmrc` el mismo día rompía el build del contenedor en el deploy,
+// no en el PR.
+//
+// Uso: node scripts/node-policy.mjs [dir] [--offline]   → sale con 1 si hay
+// violaciones. `--offline` se salta la consulta a Docker Hub.
 
 import { execFileSync } from 'node:child_process'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
@@ -94,15 +100,22 @@ export function satisfies(version, range) {
 // --- reglas ---
 
 export function checkRepo(root) {
+  return scanRepo(root).errors
+}
+
+// Devuelve las violaciones y los `FROM node:<tag>` de la imagen oficial, que
+// `checkImages` contrasta con Docker Hub.
+export function scanRepo(root) {
   const errors = []
+  const images = []
   const rel = (f) => relative(root, f).replaceAll('\\', '/')
   const nvmrcPath = join(root, '.nvmrc')
   if (!existsSync(nvmrcPath)) {
-    return ['.nvmrc: no existe. Es la fuente única de la versión de Node; créalo con la versión exacta (p. ej. 26.13.0).']
+    return { errors: ['.nvmrc: no existe. Es la fuente única de la versión de Node; créalo con la versión exacta (p. ej. 26.13.0).'], images }
   }
   const raw = readFileSync(nvmrcPath, 'utf8').trim()
   const parsed = parsePartial(raw)
-  if (!parsed || parsed[0] === null) return [`.nvmrc: "${raw}" no es una versión (se espera p. ej. 26.13.0).`]
+  if (!parsed || parsed[0] === null) return { errors: [`.nvmrc: "${raw}" no es una versión (se espera p. ej. 26.13.0).`], images }
   const major = parsed[0]
   // Con un .nvmrc parcial ("26") se prueba el extremo alto del major, para que
   // un `^26.12.1` en engines no salte en falso.
@@ -115,11 +128,17 @@ export function checkRepo(root) {
   for (const f of files.filter((f) => /^Dockerfile(\..+)?$|\.Dockerfile$/.test(basename(f)))) {
     lines(f).forEach((l, i) => {
       if (!isCode(l)) return
-      const from = l.match(/^\s*FROM\s+(?:--platform=\S+\s+)?(?:\S+\/)?node:(\S+)/i)
+      const from = l.match(/^\s*FROM\s+(?:--platform=\S+\s+)?(\S+\/)?node:(\S+)/i)
       if (from) {
-        const tagMajor = from[1].match(/^(\d+)/)?.[1]
-        if (!tagMajor) errors.push(`${rel(f)}:${i + 1}: \`node:${from[1]}\` no fija el major. Usa node:${raw}-<variante>.`)
-        else if (Number(tagMajor) !== major) errors.push(`${rel(f)}:${i + 1}: FROM node:${from[1]} es Node ${tagMajor}, pero .nvmrc dice ${raw}.`)
+        const tag = from[2]
+        const tagMajor = tag.match(/^(\d+)/)?.[1]
+        if (!tagMajor) errors.push(`${rel(f)}:${i + 1}: \`node:${tag}\` no fija el major. Usa node:${raw}-<variante>.`)
+        else if (Number(tagMajor) !== major) errors.push(`${rel(f)}:${i + 1}: FROM node:${tag} es Node ${tagMajor}, pero .nvmrc dice ${raw}.`)
+        // Sólo la imagen oficial de Docker Hub: de un mirror o registro propio
+        // no se puede saber qué tags tiene.
+        else if (!from[1] || /^(docker\.io\/)?library\/$/i.test(from[1])) {
+          images.push({ where: `${rel(f)}:${i + 1}`, tag: tag.split('@')[0] })
+        }
       }
       if (/\bcorepack\b/.test(l)) errors.push(`${rel(f)}:${i + 1}: usa corepack, que Node 26 ya no distribuye. Instala pnpm con npm leyendo packageManager.`)
     })
@@ -157,12 +176,41 @@ export function checkRepo(root) {
       errors.push('package.json: hay apphosting.yaml pero no engines.node. Sin él, el buildpack elige la versión de Node por su cuenta.')
     }
   }
-  return errors
+  return { errors, images }
+}
+
+const hubTag = (tag) => fetch(`https://hub.docker.com/v2/repositories/library/node/tags/${encodeURIComponent(tag)}`, {
+  signal: AbortSignal.timeout(10_000),
+}).then((r) => r.status)
+
+// Un 404 es una violación: ese build no va a arrancar. Cualquier otra cosa
+// (caída de Docker Hub, 429) sólo avisa, para no bloquear PRs por un tercero.
+export async function checkImages(images, getStatus = hubTag) {
+  const errors = []
+  const warnings = []
+  const byTag = Map.groupBy(images, (img) => img.tag)
+  await Promise.all([...byTag].map(async ([tag, uses]) => {
+    let status
+    try { status = await getStatus(tag) } catch (e) { status = e?.name ?? 'error' }
+    if (status === 200) return
+    for (const { where } of uses) {
+      if (status === 404) errors.push(`${where}: node:${tag} no existe en Docker Hub. La imagen oficial sale después de la release de Node: usa el último patch publicado.`)
+      else warnings.push(`${where}: no se pudo comprobar node:${tag} en Docker Hub (${status}).`)
+    }
+  }))
+  const byLine = (a, b) => a.localeCompare(b, undefined, { numeric: true })
+  return { errors: errors.sort(byLine), warnings: warnings.sort(byLine) }
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
-  const root = process.argv[2] ?? '.'
-  const errors = checkRepo(root)
+  const args = process.argv.slice(2)
+  const root = args.find((a) => !a.startsWith('--')) ?? '.'
+  const { errors, images } = scanRepo(root)
+  if (!args.includes('--offline')) {
+    const hub = await checkImages(images)
+    errors.push(...hub.errors)
+    for (const w of hub.warnings) console.warn(`  ⚠ ${w}`)
+  }
   if (errors.length) {
     console.error(`node-policy: ${errors.length} violación(es)\n`)
     for (const e of errors) console.error(`  ✗ ${e}`)

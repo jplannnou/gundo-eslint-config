@@ -125,7 +125,9 @@ export function checkRepo(root) {
     })
   }
 
-  for (const f of files.filter((f) => /[\\/]\.github[\\/]workflows[\\/][^\\/]+\.ya?ml$/.test(f))) {
+  // Sobre la ruta RELATIVA: con `root = '.'` (como se llama desde CI) la ruta
+  // absoluta no lleva separador delante de `.github` y la regla no mordía.
+  for (const f of files.filter((f) => /^\.github\/workflows\/[^/]+\.ya?ml$/.test(rel(f)))) {
     lines(f).forEach((l, i) => {
       if (!isCode(l)) return
       if (/\bcorepack\b/.test(l)) errors.push(`${rel(f)}:${i + 1}: usa corepack, que Node 26 ya no distribuye. Usa pnpm/action-setup.`)

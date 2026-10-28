@@ -67,6 +67,18 @@ test('node-version escrito a mano falla; expresiones y node-version-file no', ()
   assert.match(errs[0], /a\.yml:3: node-version 22 escrito a mano/)
 })
 
+test('con root relativo (como en CI) las reglas de workflows siguen mordiendo', () => {
+  const dir = repo({ ...OK, '.github/workflows/a.yml': '          node-version: 22\n' })
+  const cwd = process.cwd()
+  try {
+    process.chdir(dir)
+    assert.match(checkRepo('.')[0], /a\.yml:1: node-version 22 escrito a mano/)
+  } finally {
+    process.chdir(cwd)
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 test('matriz sin el major de .nvmrc falla; con él pasa', () => {
   assert.match(check({ ...OK, '.github/workflows/m.yml': "        node-version: ['22.23.4', '24.22.1']\n" })[0], /no incluye Node 26/)
   assert.deepEqual(check({ ...OK, '.github/workflows/m.yml': "        node-version: ['22.23.4', '26.13.0']\n" }), [])

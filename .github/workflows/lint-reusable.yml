@@ -70,8 +70,12 @@ on:
         type: string
         default: '\.(ts|tsx|mts|cts|js|jsx|mjs|cjs)$'
       node-version:
+        description: >-
+          Node con el que se instala y se lintea. El default sigue al LTS del
+          fleet (26 desde el 28-oct-2026). Lo pasa un repo que todavía no haya
+          migrado.
         type: string
-        default: "22"
+        default: "26"
 
 permissions:
   contents: read

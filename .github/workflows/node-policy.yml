@@ -1,0 +1,60 @@
+# Reusable: política de versión de Node para todo el fleet GUNDO.
+#
+# El `.nvmrc` del repo es la ÚNICA fuente de la versión de Node. Este job falla
+# si el Dockerfile, `engines`, los workflows o `@types/node` dicen otra cosa, o
+# si algo sigue usando corepack (Node 26 ya no lo distribuye). El detalle y el
+# porqué de cada regla están en `scripts/node-policy.mjs`.
+#
+# Uso desde un repo:
+#
+#   node-policy:
+#     uses: jplannnou/gundo-eslint-config/.github/workflows/node-policy.yml@main
+#     with:
+#       runner: gundo-local   # o jp-local / ubuntu-latest, igual que lint-reusable
+#
+# El script se toma de `main` de este repo y no del ref con el que se llama:
+# Actions no expone al reusable su propio ref. Como todo el fleet llama con
+# `@main`, coincide.
+
+name: Node policy (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      runner:
+        description: >-
+          Dónde corre. Mismo criterio que lint-reusable: `gundo-local` en el
+          org, `jp-local` en los privados personales y `ubuntu-*` en los
+          públicos. Sin default a propósito.
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  node-policy:
+    runs-on: >-
+      ${{ fromJSON(startsWith(inputs.runner, 'ubuntu-')
+          && format('["{0}"]', inputs.runner)
+          || format('["self-hosted","{0}"]', inputs.runner)) }}
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Traer el script de la política
+        uses: actions/checkout@v4
+        with:
+          repository: jplannnou/gundo-eslint-config
+          ref: main
+          path: .gundo-node-policy
+
+      # La versión del propio gundo-eslint-config, no la del repo que llama: si
+      # el `.nvmrc` del repo falta o está mal, el script tiene que poder
+      # ejecutarse para decirlo.
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .gundo-node-policy/.nvmrc
+
+      - name: Comprobar la política de Node
+        run: node .gundo-node-policy/scripts/node-policy.mjs .

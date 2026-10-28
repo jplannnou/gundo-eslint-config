@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import test from 'node:test'
 
-import { checkRepo, satisfies } from './node-policy.mjs'
+import { checkImages, checkRepo, satisfies, scanRepo } from './node-policy.mjs'
 
 function repo(files) {
   const dir = mkdtempSync(join(tmpdir(), 'node-policy-'))
@@ -101,6 +101,44 @@ test('apphosting.yaml sin engines.node falla', () => {
 
 test('node_modules no se inspecciona', () => {
   assert.deepEqual(check({ ...OK, 'node_modules/x/Dockerfile': 'FROM node:18\n' }), [])
+})
+
+function images(files) {
+  const dir = repo({ ...OK, ...files })
+  try { return scanRepo(dir).images } finally { rmSync(dir, { recursive: true, force: true }) }
+}
+
+test('se recogen los tags de la imagen oficial, no los de mirrors ni registros propios', () => {
+  const got = images({
+    Dockerfile: [
+      'FROM node:26.13.0-slim AS build',
+      'FROM docker.io/library/node:26.12.1-slim@sha256:abc',
+      'FROM mirror.gcr.io/library/node:26-slim',
+      'FROM europe-docker.pkg.dev/x/y/node:26',
+    ].join('\n'),
+  })
+  assert.deepEqual(got.map((i) => i.tag), ['26.13.0-slim', '26.12.1-slim'])
+  assert.equal(got[0].where, 'Dockerfile:1')
+})
+
+test('tag inexistente en Docker Hub falla; caída de Docker Hub sólo avisa', async () => {
+  const imgs = [
+    { where: 'Dockerfile:1', tag: '26.13.0-slim' },
+    { where: 'Dockerfile:5', tag: '26.13.0-slim' },
+    { where: 'api/Dockerfile:1', tag: '26.12.1-slim' },
+    { where: 'web/Dockerfile:1', tag: '26.12.1-alpine' },
+  ]
+  const seen = []
+  const status = { '26.13.0-slim': 404, '26.12.1-slim': 200, '26.12.1-alpine': 429 }
+  const { errors, warnings } = await checkImages(imgs, async (tag) => { seen.push(tag); return status[tag] })
+  assert.equal(seen.length, 3, 'una consulta por tag, no por línea')
+  assert.equal(errors.length, 2)
+  assert.match(errors[0], /Dockerfile:1: node:26\.13\.0-slim no existe en Docker Hub/)
+  assert.deepEqual(warnings, ['web/Dockerfile:1: no se pudo comprobar node:26.12.1-alpine en Docker Hub (429).'])
+
+  const down = await checkImages(imgs.slice(2, 3), async () => { throw Object.assign(new Error('x'), { name: 'TimeoutError' }) })
+  assert.deepEqual(down.errors, [])
+  assert.match(down.warnings[0], /\(TimeoutError\)/)
 })
 
 test('satisfies cubre los rangos reales del fleet', () => {

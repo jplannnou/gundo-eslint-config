@@ -3,6 +3,7 @@
 import globals from 'globals'
 import reactHooks from 'eslint-plugin-react-hooks'
 import base from './base.js'
+import { reactHooksRules } from './rules/react-hooks.js'
 
 export default [
   ...base,
@@ -13,7 +14,7 @@ export default [
       globals: { ...globals.browser },
     },
     rules: {
-      ...reactHooks.configs.recommended.rules,
+      ...reactHooksRules,
     },
   },
 ]

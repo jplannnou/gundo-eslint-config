@@ -8,6 +8,7 @@ import globals from 'globals'
 import nextPlugin from '@next/eslint-plugin-next'
 import reactHooks from 'eslint-plugin-react-hooks'
 import base from './base.js'
+import { reactHooksRules } from './rules/react-hooks.js'
 
 export default [
   ...base,
@@ -23,7 +24,7 @@ export default [
     rules: {
       ...nextPlugin.configs.recommended.rules,
       ...nextPlugin.configs['core-web-vitals'].rules,
-      ...reactHooks.configs.recommended.rules,
+      ...reactHooksRules,
     },
   },
 ]

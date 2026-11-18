@@ -6,6 +6,9 @@
 //   - `_`-prefix = binding intencionalmente sin usar (args, vars, catch).
 //   - `consistent-type-imports` en error → imports de tipo separados.
 //   - `no-console` warn salvo warn/error/info (logging estructurado igual).
+// `@eslint/js` se mantiene en 9.x a propósito: la 10.x añade `no-useless-assignment`
+// y `preserve-caught-error` a `recommended` (errores nuevos en los repos) y exige
+// peer `eslint@^10`. Funciona bajo ESLint 9 y 10. Ver README.
 import js from '@eslint/js'
 import tseslint from 'typescript-eslint'
 

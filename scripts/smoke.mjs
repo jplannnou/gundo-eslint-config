@@ -87,6 +87,62 @@ export const x = [base, globals]
 }
 
 // ─────────────────────────────────────────────────────────────────────────
+// Guarda de react-hooks: los presets React llevan EXACTAMENTE las dos reglas
+// clásicas y las dos MUERDEN.
+//
+// Por qué existe: `eslint-plugin-react-hooks` >= 7 (soporte de ESLint 10) metió
+// 14 reglas del React Compiler en `configs.recommended`. Si un preset vuelve a
+// hacer `...reactHooks.configs.recommended.rules`, esas reglas llegan a todos
+// los consumidores de golpe, sin decisión. Y si el plugin dejara de registrarse,
+// `rules-of-hooks` no reportaría y el lint quedaría verde en falso.
+try {
+  const esperadas = {
+    'react-hooks/rules-of-hooks': 'error',
+    'react-hooks/exhaustive-deps': 'warn',
+  }
+  const hooksMalos = `import { useState } from 'react'
+
+export function Cmp({ cond }) {
+  if (cond) {
+    useState(0)
+  }
+  return null
+}
+`
+  for (const [name, filename] of [
+    ['react-vite', 'sample.tsx'],
+    ['next', 'sample.tsx'],
+    ['lib', 'sample.tsx'],
+  ]) {
+    const { default: cfg } = await import(`../${name}.js`)
+    const efectivas = {}
+    for (const objeto of cfg) {
+      for (const [id, valor] of Object.entries(objeto.rules ?? {})) {
+        if (id.startsWith('react-hooks/')) efectivas[id] = Array.isArray(valor) ? valor[0] : valor
+      }
+    }
+    if (JSON.stringify(efectivas) !== JSON.stringify(esperadas)) {
+      console.error(
+        `✗ ${name}: las reglas react-hooks son ${JSON.stringify(efectivas)}, se esperaba ${JSON.stringify(esperadas)}. ` +
+          'Adoptar las reglas del Compiler es una decisión aparte (ver rules/react-hooks.js).',
+      )
+      failed = true
+      continue
+    }
+    const msgs = linter.verify(hooksMalos, cfg, filename)
+    if (msgs.some((m) => m.ruleId === 'react-hooks/rules-of-hooks')) {
+      console.info(`✓ ${name}: react-hooks/rules-of-hooks reporta (y solo hay 2 reglas react-hooks)`)
+    } else {
+      console.error(`✗ ${name}: react-hooks/rules-of-hooks no reportó un hook condicional`)
+      failed = true
+    }
+  }
+} catch (err) {
+  console.error(`✗ react-hooks: ${err.message}`)
+  failed = true
+}
+
+// ─────────────────────────────────────────────────────────────────────────
 // Guarda de COBERTURA del ratchet: el `globs` por defecto de lint-reusable.yml
 // tiene que casar con TODA extensión que los presets lintean.
 //

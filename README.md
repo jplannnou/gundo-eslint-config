@@ -1,6 +1,6 @@
 # @jplannnou/eslint-config
 
-Configs ESLint (flat, ESLint 9+) compartidas para el fleet GUNDO. Fuente única
+Configs ESLint (flat, ESLint 9 y 10) compartidas para el fleet GUNDO. Fuente única
 de verdad: bumpear ESLint o cambiar reglas base se hace **acá**, no en 30 repos.
 
 ## Presets
@@ -64,9 +64,25 @@ fork mantenido — **no** `eslint-plugin-import`. Consecuencias prácticas:
   `sourceCode.getTokenOrCommentAfter()`, borrada en ESLint 10: no reporta un
   error de lint, mata el proceso con `exit 2` y tumba el lint entero.
 
-El paquete soporta ESLint 9 **y** 10 (peer `>=9`), y el CI lo verifica en
+El paquete soporta ESLint 9 **y** 10 (peer `^9 || ^10`), y el CI lo verifica en
 ambas: `pnpm test` ejecuta las reglas de cada preset sobre código real, así que
 un plugin que sólo carga pero no corre falla el build.
+
+Dos decisiones de versión que NO son obvias (medidas el 2026-11-17 sobre
+plataform-ui y gundo-ui):
+
+- **`eslint-plugin-react-hooks` 7.x** es la primera línea con soporte de
+  ESLint 10 (la 5.x declara peer `<=9`). Su `configs.recommended` trae además 14
+  reglas del React Compiler en `error`, así que los presets fijan sólo
+  `rules-of-hooks` y `exhaustive-deps` (`rules/react-hooks.js`): el mismo
+  conjunto que tenían con la 5.x. Adoptar las del Compiler es una decisión
+  aparte, y `pnpm test` falla si un preset las vuelve a activar sin querer.
+- **`@eslint/js` se queda en `^9.39`.** La 10.x amplía `recommended` con
+  `no-useless-assignment` y `preserve-caught-error` en `error`: 16 errores
+  nuevos en plataform-ui y 2 en gundo-ui, con ESLint 9 y con 10 por igual (lo
+  decide la versión de `@eslint/js`, no la de ESLint). La 9.39 funciona bajo
+  ESLint 10 y no tiene peer `eslint@^10`, así que tampoco avisa en repos que
+  siguen en 9. Subirla es un PR aparte, tras arreglar esos errores en los repos.
 
 ## CI (ratchet)
 
